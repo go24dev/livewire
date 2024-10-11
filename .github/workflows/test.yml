@@ -4,44 +4,32 @@ on:
   push:
     branches:
       - "**"
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
   pull_request:
     types: [ready_for_review, synchronize, opened]
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
-        php: [7.2, 7.3, 7.4, '8.0', 8.1, 8.2]
-        laravel: [7.*, 8.*, 9.*, 10.*]
+        php: [8.1, 8.2, 8.3]
+        laravel: [10.*, 11.*]
         exclude:
-          - php: 7.2
-            laravel: 9.*
-          - php: 7.2
-            laravel: 10.*
-          - php: 7.3
-            laravel: 9.*
-          - php: 7.3
-            laravel: 10.*
-          - php: 7.4
-            laravel: 9.*
-          - php: 7.4
-            laravel: 10.*
-          - php: 7.2
-            laravel: 8.*
-          - php: '8.0'
-            laravel: 10.*
           - php: 8.1
-            laravel: 7.*
-          - php: 8.2
-            laravel: 7.*
+            laravel: 11.*
 
     name: PHP:${{ matrix.php }} / Laravel:${{ matrix.laravel }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup PHP, with composer and extensions
         uses: shivammathur/setup-php@v2
@@ -53,10 +41,10 @@ jobs:
 
       - name: Get composer cache directory
         id: composer-cache
-        run: echo "::set-output name=dir::$(composer config cache-files-dir)"
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
 
       - name: Cache composer dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: dependencies-laravel-${{ matrix.laravel }}-php-${{ matrix.php }}-composer-${{ hashFiles('composer.json') }}
@@ -65,17 +53,24 @@ jobs:
       - name: Install Composer dependencies
         run: |
           composer require "laravel/framework:${{ matrix.laravel }}" --no-interaction --no-update --dev
-          composer update --prefer-stable --no-interaction --no-suggest
+          composer update --prefer-stable --no-interaction
+
+      - name: Setup dusk/chrome
+        run: vendor/bin/dusk-updater detect --no-interaction
 
       - name: Run Unit tests
         run: vendor/bin/phpunit --testsuite Unit
         env:
           RUNNING_IN_CI: true
 
-      - name: Setup dusk/chrome
-        run: vendor/bin/dusk-updater update 109 --no-interaction
-
       - name: Run Browser tests
+        if: success() || failure()
         run: vendor/bin/phpunit --testsuite Browser
+        env:
+          RUNNING_IN_CI: true
+
+      - name: Run Legacy Browser tests
+        if: success() || failure()
+        run: vendor/bin/phpunit --testsuite LegacyBrowser
         env:
           RUNNING_IN_CI: true
